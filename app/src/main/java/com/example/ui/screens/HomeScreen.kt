@@ -55,7 +55,7 @@ fun HomeScreen(
     val inspirations = remember {
         listOf(
             PromptInspiration("Portfolios", "Minimalist Developer Portfolio", "Clean, modern personal portfolio for a senior mobile engineer with dark mode, interactive project cards, skill badges, and contact form."),
-            PromptInspiration("Landing Pages", "AI SaaS Landing Page", "Futuristic landing page for an AI developer platform featuring a glassmorphism hero banner, feature comparison grid, live code snippet preview, and pricing tier cards."),
+            PromptInspiration("Landing Pages", "Bespoke Grooming & Barber Parlor", "Editorial website for a heritage barbershop featuring master stylist profiles, transparent service and price list, shop interior photography, and booking drawer."),
             PromptInspiration("E-Commerce", "Artisan Coffee Roasters", "Sleek e-commerce storefront for specialty coffee roasters with warm earthy tones, tasting note tags, grind selector, and animated add-to-cart drawer."),
             PromptInspiration("Restaurants", "Luxury Michelin Dining", "Elegant dark-themed culinary website for a high-end restaurant in Tokyo with tasting menus, reservation datepicker, chef philosophy section, and subtle scroll animations."),
             PromptInspiration("Portfolios", "Creative Design Studio", "Bold, typography-driven portfolio for a branding agency with interactive case study showcase, client marquee, and interactive work filters.")

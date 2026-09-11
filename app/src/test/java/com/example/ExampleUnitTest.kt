@@ -87,4 +87,13 @@ class ExampleUnitTest {
         assertTrue(exception.message!!.contains("INVALID_ARGUMENT"))
         assertTrue(exception.message!!.contains("Invalid value at generation_config"))
     }
+
+    @Test
+    fun testCleanJsonString_handlesNestedAndRawBlocks() {
+        val raw = "```json\n{\"html\": \"<header><h1>Barber</h1></header>\", \"css\": \":root { --color-primary: #121417; }\", \"js\": \"console.log('ready');\"}\n```"
+        val cleaned = WebsiteGenerator.cleanJsonString(raw)
+        assertTrue(cleaned.startsWith("{"))
+        assertTrue(cleaned.endsWith("}"))
+        assertTrue(cleaned.contains("--color-primary"))
+    }
 }

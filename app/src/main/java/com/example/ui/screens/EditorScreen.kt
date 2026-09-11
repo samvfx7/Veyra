@@ -719,40 +719,40 @@ fun buildSelfContainedHtml(project: Project): String {
 
     val viewportMeta = """<meta name="viewport" content="width=device-width, initial-scale=1.0">"""
     val utf8Meta = """<meta charset="UTF-8">"""
+    val styleBlock = "\n$utf8Meta\n$viewportMeta\n<style>\n$css\n</style>\n"
+    val scriptBlock = "\n<script>\n$js\n</script>\n"
+
+    // 1. Insert CSS / head tags safely using index slicing (immune to $ and \ in CSS)
+    val headIndex = rawHtml.indexOf("<head>", ignoreCase = true)
+    val htmlIndex = rawHtml.indexOf("<html>", ignoreCase = true)
 
     val htmlWithHead = when {
-        rawHtml.contains("<head>", ignoreCase = true) -> {
-            rawHtml.replace(
-                Regex("<head>", RegexOption.IGNORE_CASE),
-                "<head>\n$utf8Meta\n$viewportMeta\n<style>\n$css\n</style>"
-            )
+        headIndex != -1 -> {
+            val insertPoint = headIndex + "<head>".length
+            rawHtml.substring(0, insertPoint) + styleBlock + rawHtml.substring(insertPoint)
         }
-        rawHtml.contains("<html>", ignoreCase = true) -> {
-            rawHtml.replace(
-                Regex("<html>", RegexOption.IGNORE_CASE),
-                "<html>\n<head>\n$utf8Meta\n$viewportMeta\n<style>\n$css\n</style>\n</head>"
-            )
+        htmlIndex != -1 -> {
+            val insertPoint = htmlIndex + "<html>".length
+            rawHtml.substring(0, insertPoint) + "<head>$styleBlock</head>" + rawHtml.substring(insertPoint)
         }
         else -> {
-            "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n$utf8Meta\n$viewportMeta\n<style>\n$css\n</style>\n</head>\n<body>\n$rawHtml"
+            "<!DOCTYPE html>\n<html lang=\"en\">\n<head>$styleBlock</head>\n<body>\n$rawHtml"
         }
     }
 
+    // 2. Insert JS script block before </body> or </html> safely using lastIndexOf (immune to $ and \ in JS)
+    val bodyCloseIndex = htmlWithHead.lastIndexOf("</body>", ignoreCase = true)
+    val htmlCloseIndex = htmlWithHead.lastIndexOf("</html>", ignoreCase = true)
+
     return when {
-        htmlWithHead.contains("</body>", ignoreCase = true) -> {
-            htmlWithHead.replace(
-                Regex("</body>", RegexOption.IGNORE_CASE),
-                "<script>\n$js\n</script>\n</body>"
-            )
+        bodyCloseIndex != -1 -> {
+            htmlWithHead.substring(0, bodyCloseIndex) + scriptBlock + htmlWithHead.substring(bodyCloseIndex)
         }
-        htmlWithHead.contains("</html>", ignoreCase = true) -> {
-            htmlWithHead.replace(
-                Regex("</html>", RegexOption.IGNORE_CASE),
-                "<script>\n$js\n</script>\n</body>\n</html>"
-            )
+        htmlCloseIndex != -1 -> {
+            htmlWithHead.substring(0, htmlCloseIndex) + scriptBlock + htmlWithHead.substring(htmlCloseIndex)
         }
         else -> {
-            "$htmlWithHead\n<script>\n$js\n</script>\n</body>\n</html>"
+            "$htmlWithHead$scriptBlock\n</body>\n</html>"
         }
     }
 }

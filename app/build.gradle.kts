@@ -64,6 +64,15 @@ android {
   }
 }
 
+// Ensure .env is populated with GEMINI_API_KEY from environment if available
+val envGeminiKey = System.getenv("GEMINI_API_KEY")
+if (!envGeminiKey.isNullOrEmpty()) {
+  val envFile = rootProject.file(".env")
+  if (!envFile.exists() || !envFile.readText().contains("GEMINI_API_KEY=") || envFile.readText().contains("GEMINI_API_KEY=MY_GEMINI_API_KEY")) {
+    envFile.writeText("GEMINI_API_KEY=$envGeminiKey\n")
+  }
+}
+
 // Configure the Secrets Gradle Plugin to use .env and .env.example files
 // to match the convention used in Web projects.
 secrets {

@@ -39,7 +39,20 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
+      - name: Configure API Key from GitHub Secrets
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -n "$GEMINI_API_KEY" ]; then
+            echo "GEMINI_API_KEY=$GEMINI_API_KEY" > .env
+            echo "Successfully configured GEMINI_API_KEY into .env"
+          else
+            echo "Warning: GEMINI_API_KEY secret not found in GitHub repository secrets"
+          fi
+
       - name: Build APK
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: ./gradlew assembleDebug
 
       - name: Upload APK Artifact
