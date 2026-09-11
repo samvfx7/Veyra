@@ -11,11 +11,10 @@ import java.io.IOException
 import java.net.SocketTimeoutException
 
 class GeminiService(
-    private val primaryModel: String = "gemini-3.6-flash"
+    private val defaultModel: String? = null
 ) {
     companion object {
         private const val TAG = "GeminiService"
-        private val FALLBACK_MODELS = listOf("gemini-3.6-flash", "gemini-flash-latest", "gemini-3.5-flash")
     }
 
     private val apiKey = BuildConfig.GEMINI_API_KEY
@@ -30,19 +29,24 @@ class GeminiService(
         }
     }
 
-    suspend fun generateContent(prompt: String, systemInstruction: String? = null): String = withContext(Dispatchers.IO) {
+    suspend fun generateContent(
+        prompt: String,
+        systemInstruction: String? = null,
+        taskType: GenerationTaskType = GenerationTaskType.CONTENT_REWRITE
+    ): String = withContext(Dispatchers.IO) {
         validateApiKey()
         val request = GenerateContentRequest(
             contents = listOf(Content(parts = listOf(Part(text = prompt)))),
             systemInstruction = systemInstruction?.let { Content(parts = listOf(Part(text = it))) }
         )
-        executeWithDiagnostics(request)
+        executeWithDiagnostics(request, taskType)
     }
-    
+
     suspend fun generateStructuredContent(
         prompt: String,
         systemInstruction: String,
-        schema: JsonObject
+        schema: JsonObject,
+        taskType: GenerationTaskType = GenerationTaskType.FULL_GENERATION
     ): String = withContext(Dispatchers.IO) {
         validateApiKey()
         val request = GenerateContentRequest(
@@ -54,40 +58,46 @@ class GeminiService(
                 responseSchema = schema
             )
         )
-        executeWithDiagnostics(request)
+        executeWithDiagnostics(request, taskType)
     }
 
-    private suspend fun executeWithDiagnostics(request: GenerateContentRequest): String {
-        val modelsToTry = buildList {
-            add(primaryModel)
-            for (m in FALLBACK_MODELS) {
-                if (m != primaryModel && !contains(m)) {
-                    add(m)
-                }
-            }
+    private suspend fun executeWithDiagnostics(
+        request: GenerateContentRequest,
+        taskType: GenerationTaskType
+    ): String {
+        val eligibleModels = if (defaultModel != null && ModelRouter.isModelAvailable(defaultModel)) {
+            listOf(defaultModel) + ModelRouter.getEligibleModelsForTask(taskType).filter { it != defaultModel }
+        } else {
+            ModelRouter.getEligibleModelsForTask(taskType)
         }
 
         var lastException: Exception? = null
+        val attemptedModels = mutableSetOf<String>()
 
-        for (model in modelsToTry) {
+        for (i in eligibleModels.indices) {
+            val model = eligibleModels[i]
+            if (attemptedModels.contains(model)) continue
+            attemptedModels.add(model)
+
             var attempt = 0
-            val maxAttempts = 2
+            val maxAttempts = ModelConfig.MAX_RETRIES_PER_MODEL
+
             while (attempt < maxAttempts) {
                 attempt++
                 try {
-                    Log.d(TAG, "Attempting generation with model: $model (attempt $attempt)")
+                    Log.d(TAG, "Attempting execution for task $taskType with model: $model (attempt $attempt)")
                     val response = RetrofitClient.service.generateContent(model, apiKey, request)
-                    
+
                     val candidate = response.candidates.firstOrNull()
                     if (candidate == null) {
                         throw GeminiApiException(200, "NO_CANDIDATES", "Gemini returned no response candidates.")
                     }
-                    
+
                     val text = candidate.content?.parts?.firstOrNull()?.text
                     if (!text.isNullOrBlank()) {
                         return text
                     }
-                    
+
                     val finishReason = candidate.finishReason ?: "UNKNOWN"
                     throw GeminiApiException(
                         200,
@@ -109,44 +119,70 @@ class GeminiService(
 
                     val status = parsed?.error?.status ?: "HTTP_${e.code()}"
                     val rawMsg = parsed?.error?.message ?: e.message()
-                    // Never expose apiKey in logs or exception messages
+                    // Strictly sanitize logs and messages to prevent credential leaks
                     val sanitizedMsg = if (apiKey.isNotEmpty()) rawMsg.replace(apiKey, "[REDACTED]") else rawMsg
 
                     Log.e(TAG, "Gemini API Error with model $model: [$status] (code ${e.code()}): $sanitizedMsg")
                     val apiException = GeminiApiException(e.code(), status, sanitizedMsg, e)
 
-                    // If error is 503 or 404 (service unavailable or model not found), try next model
-                    if (e.code() == 503 || e.code() == 404) {
-                        Log.w(TAG, "Model $model returned HTTP ${e.code()}. Trying fallback model...")
+                    // 1. Rate Limit / Quota Exceeded (HTTP 429)
+                    if (e.code() == 429 || status.contains("RESOURCE_EXHAUSTED", ignoreCase = true)) {
+                        ModelRouter.markModelUnavailable(model, "HTTP 429 Quota/Rate Limit", ModelConfig.RATE_LIMIT_COOLDOWN_MS)
                         lastException = apiException
-                        break // Break inner attempt loop to try next model
+
+                        // Check if an alternate model is available
+                        val nextModel = eligibleModels.getOrNull(i + 1)
+                        if (nextModel != null) {
+                            ModelRouter.notifyModelSwitched(model, nextModel)
+                            Log.w(TAG, "Model $model hit quota limit. Gracefully routing to next available model: $nextModel")
+                            break // Break inner retry loop to try next model in outer loop
+                        }
                     }
 
-                    // If 400 (Bad Request), 401 (Auth), or 429 (Quota), do not retry with identical payload
-                    throw apiException
+                    // 2. Service Unavailable or Temporary Server Error (HTTP 503 / 500 / 504)
+                    if (e.code() == 503 || e.code() == 500 || e.code() == 504 || e.code() == 404) {
+                        ModelRouter.markModelUnavailable(model, "HTTP ${e.code()} Service Error", ModelConfig.SERVER_ERROR_COOLDOWN_MS)
+                        lastException = apiException
+
+                        val nextModel = eligibleModels.getOrNull(i + 1)
+                        if (nextModel != null) {
+                            ModelRouter.notifyModelSwitched(model, nextModel)
+                            Log.w(TAG, "Model $model unavailable (HTTP ${e.code()}). Routing to fallback: $nextModel")
+                            break
+                        }
+                    }
+
+                    // 3. Unrecoverable Client errors (400 Bad Request or 401 Auth)
+                    if (e.code() == 400 || e.code() == 401) {
+                        throw apiException
+                    }
+
+                    lastException = apiException
+                    break // Non-retryable HTTP error for this model, move to next model if available
                 } catch (e: SocketTimeoutException) {
                     Log.e(TAG, "Gemini API timeout with model $model (attempt $attempt): ${e.message}")
                     lastException = GeminiApiException(408, "TIMEOUT", "Connection to Gemini timed out. Please try again.", e)
                     if (attempt < maxAttempts) {
-                        delay(1000L)
+                        delay(ModelConfig.RETRY_BACKOFF_DELAY_MS)
                         continue
                     }
                 } catch (e: IOException) {
                     Log.e(TAG, "Network error with model $model (attempt $attempt): ${e.message}")
                     lastException = GeminiApiException(0, "NETWORK_ERROR", "Network failure connecting to Gemini: ${e.message}", e)
                     if (attempt < maxAttempts) {
-                        delay(1000L)
+                        delay(ModelConfig.RETRY_BACKOFF_DELAY_MS)
                         continue
                     }
                 } catch (e: GeminiApiException) {
                     throw e
                 } catch (e: Exception) {
-                    Log.e(TAG, "Unexpected error calling Gemini API: ${e.message}", e)
+                    Log.e(TAG, "Unexpected error calling Gemini API with model $model: ${e.message}", e)
                     throw GeminiApiException(500, "INTERNAL_ERROR", e.message ?: "Unexpected error", e)
                 }
             }
         }
 
-        throw lastException ?: GeminiApiException(500, "UNKNOWN_ERROR", "Failed to generate content with Gemini.")
+        val finalError = lastException ?: GeminiApiException(503, "ALL_MODELS_BUSY", "AI generation services are currently experiencing high demand. Please try again in a few moments.")
+        throw finalError
     }
 }

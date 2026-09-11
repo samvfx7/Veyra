@@ -55,6 +55,7 @@ fun EditorScreen(
     val isEditing by viewModel.isEditing.collectAsStateWithLifecycle()
     val editError by viewModel.editError.collectAsStateWithLifecycle()
     val lastChange by viewModel.lastChangeDescription.collectAsStateWithLifecycle()
+    val systemNotice by viewModel.systemNotice.collectAsStateWithLifecycle()
 
     var viewMode by remember { mutableStateOf(ViewMode.PREVIEW) }
     var selectedTab by remember { mutableStateOf(CodeTab.HTML) }
@@ -199,6 +200,43 @@ fun EditorScreen(
                             }
                         }
 
+                        AnimatedVisibility(visible = systemNotice != null) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 10.dp)
+                                    .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                                    .border(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = systemNotice ?: "",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(
+                                    onClick = { viewModel.dismissNotice() },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Dismiss notice",
+                                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+                        }
+
                         AnimatedVisibility(visible = editError != null) {
                             Row(
                                 modifier = Modifier
@@ -244,12 +282,12 @@ fun EditorScreen(
                                 .padding(bottom = 12.dp)
                         ) {
                             val suggestions = listOf(
-                                "✨ Add smooth animations",
-                                "🌙 Add dark mode toggle",
-                                "📱 Optimize mobile layout",
-                                "🎨 Modern glassmorphism style",
-                                "💬 Add contact form & CTA",
-                                "⭐ Add customer reviews section"
+                                "🎨 Warm earthy color palette",
+                                "🌙 Switch to dark mode",
+                                "📐 Expand spacing & whitespace",
+                                "💬 Add contact inquiry form",
+                                "⭐ Add client testimonials",
+                                "📱 Optimize mobile drawer"
                             )
                             items(suggestions) { suggestion ->
                                 Surface(

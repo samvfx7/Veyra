@@ -2,7 +2,9 @@ package com.example.ui.screens
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.api.DesignSpecification
 import com.example.api.GeminiService
+import com.example.api.ModelRouter
 import com.example.api.WebsiteGenerator
 import com.example.data.Project
 import com.example.data.ProjectRepository
@@ -29,6 +31,9 @@ class EditorViewModel(
 
     private val _lastChangeDescription = MutableStateFlow<String?>(null)
     val lastChangeDescription: StateFlow<String?> = _lastChangeDescription
+
+    // Observes model fallback notices from ModelRouter (e.g. "Veyra switched to an available AI model.")
+    val systemNotice: StateFlow<String?> = ModelRouter.systemNotice
 
     init {
         loadProject()
@@ -57,11 +62,14 @@ class EditorViewModel(
         viewModelScope.launch {
             try {
                 val generator = WebsiteGenerator(GeminiService())
+                val designSpec = DesignSpecification.fromJson(currentProject.designSpecification)
+                
                 val newCode = generator.modifyCode(
-                    instruction,
-                    currentProject.htmlContent,
-                    currentProject.cssContent,
-                    currentProject.jsContent
+                    instruction = instruction,
+                    currentHtml = currentProject.htmlContent,
+                    currentCss = currentProject.cssContent,
+                    currentJs = currentProject.jsContent,
+                    designSpec = designSpec
                 )
                 
                 val updatedProject = currentProject.copy(
@@ -117,5 +125,9 @@ class EditorViewModel(
 
     fun dismissError() {
         _editError.value = null
+    }
+
+    fun dismissNotice() {
+        ModelRouter.clearNotice()
     }
 }

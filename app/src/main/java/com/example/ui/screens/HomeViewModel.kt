@@ -2,13 +2,16 @@ package com.example.ui.screens
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.api.DesignSpecification
 import com.example.api.GeminiService
+import com.example.api.ModelRouter
 import com.example.api.WebsiteGenerator
 import com.example.data.Project
 import com.example.data.ProjectRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -27,6 +30,9 @@ class HomeViewModel(
     val enhancePromptEnabled = MutableStateFlow(true)
     
     val generationState = MutableStateFlow<GenerationState>(GenerationState.Idle)
+
+    // Observes model fallback notices from ModelRouter
+    val systemNotice: StateFlow<String?> = ModelRouter.systemNotice
 
     fun onPromptChange(newPrompt: String) {
         prompt.value = newPrompt
@@ -47,9 +53,9 @@ class HomeViewModel(
             try {
                 val userPrompt = prompt.value
                 val isEnhanceEnabled = enhancePromptEnabled.value
+                val generator = WebsiteGenerator(GeminiService())
                 
                 generationState.value = GenerationState.Understanding
-                val generator = WebsiteGenerator(GeminiService())
                 
                 val finalPrompt = if (isEnhanceEnabled) {
                     generationState.value = GenerationState.Enhancing
@@ -58,11 +64,13 @@ class HomeViewModel(
                     userPrompt
                 }
                 
+                // Design System First: Generate compact design specification once using best model
                 generationState.value = GenerationState.Architecting
-                // Simulate slight delay for UX architecture step if needed, or proceed directly
+                val designSpec = generator.generateDesignSpecification(finalPrompt)
                 
+                // Code Generation: Use efficient model with grounding in design specification
                 generationState.value = GenerationState.Generating
-                val generatedCode = generator.generateCode(finalPrompt)
+                val generatedCode = generator.generateCode(finalPrompt, designSpec)
                 
                 generationState.value = GenerationState.PreparingPreview
                 
@@ -75,6 +83,7 @@ class HomeViewModel(
                 if (project != null) {
                     val updated = project.copy(
                         enhancedPrompt = if (isEnhanceEnabled) finalPrompt else null,
+                        designSpecification = designSpec.toJson(),
                         htmlContent = generatedCode.html,
                         cssContent = generatedCode.css,
                         jsContent = generatedCode.js,

@@ -11,6 +11,7 @@ data class Project(
     val name: String,
     val originalPrompt: String,
     val enhancedPrompt: String? = null,
+    val designSpecification: String? = null,
     val htmlContent: String = "",
     val cssContent: String = "",
     val jsContent: String = "",

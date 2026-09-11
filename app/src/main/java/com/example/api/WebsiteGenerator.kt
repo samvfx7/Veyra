@@ -28,6 +28,26 @@ class WebsiteGenerator(private val geminiService: GeminiService) {
             return text
         }
 
+        private val DESIGN_SPEC_INSTRUCTION = """
+            You are the Executive Creative Director and Principal Digital Architect at a world-class digital design agency.
+            Your task is to take any website request and develop an exhaustive, compact Design Architecture Specification.
+
+            CORE DESIGN PRINCIPLE:
+            The generated website must prioritize professional visual hierarchy, usability, brand identity, typography, spacing, layout composition, and realistic content.
+            It must NOT look like a generic AI landing page.
+            Think like an experienced product designer and frontend developer creating a real website for a paying client.
+
+            STRICTLY AVOID:
+            - NEVER use purple/blue AI gradients, neon glows, or gradient text.
+            - NEVER use glassmorphism or floating gradient blobs.
+            - NEVER put every piece of information into rounded cards.
+            - NEVER use generic headlines like "Welcome to..." or "Elevate your experience".
+            - NEVER use fake statistics or fake testimonials.
+
+            Select components strictly from this library:
+            EditorialHero, LuxuryHero, MinimalHero, ServiceList, ServiceGrid, SplitContent, StorySection, ImageGallery, TeamSection, TestimonialSection, PricingSection, FAQSection, CTASection, BookingSection, ContactSection, LocationSection, Footer.
+        """.trimIndent()
+
         private val ENHANCE_PROMPT_INSTRUCTION = """
             You are the Executive Creative Director and Principal Digital Architect at a world-class digital design agency (like Pentagram, Area 17, or Instrument).
             Your task is to take any website request and develop an exhaustive, bespoke Design Architecture Specification for a production-ready website.
@@ -43,41 +63,7 @@ class WebsiteGenerator(private val geminiService: GeminiService) {
             - NEVER invent fake statistical metrics ("99% Satisfaction", "10,000+ Happy Customers") or fake testimonials ("John Doe: Outstanding!").
             - NEVER recommend visual effects simply because they are possible. Every visual element must have a clear purpose.
 
-            THE 11 MANDATORY DESIGN DECISIONS YOU MUST FORMULATE:
-            1. BUSINESS TYPE & INDUSTRY CONTEXT: Identify the exact industry niche, business model, and physical operational reality.
-            2. TARGET AUDIENCE & POSITIONING: Specific clientele demographics, taste level, expectations, and trust triggers.
-            3. BRAND PERSONALITY & VOICE: Tailored tone (e.g. Warm Artisanal, Authoritative Heritage, Restrained Luxury, Clinical Precision, Bold Editorial, High-Craft Hospitality).
-            4. BESPOKE SECTION COMPOSITION & LAYOUT RHYTHM:
-               - Detail a varied sequence of section structures. Strictly forbid repeating identical 3-card grids.
-               - Industry-specific layouts:
-                 * Barber / Salon: Strong photographic hero, service & pricing list/table (dot leaders or subtle borders, NOT cards), master barber/stylist roster, shop interior gallery, operational hours table, mobile booking flow.
-                 * Restaurant / Dining: Atmosphere/food imagery hero, culinary philosophy split layout, categorized menu with descriptions & prices, table reservation flow, hours & location.
-                 * Law Firm / Advisory: Conservative high-trust typography, practice areas list or clean accordion, attorney profiles with bar credentials, confidential consultation CTA.
-                 * Hotel / Hospitality: Immersive architectural photography, rooms & suites showcase with specs (dimensions, bed, views), amenities, experiences, direct reservation bar.
-                 * Real Estate / Architecture: Property imagery, interactive search/filter interface, verified property listings, neighborhood guide, agent contact.
-                 * Studio / Agency: Bold typography-driven hero, asymmetrical case study showcases, client roster, capabilities list, inquiry form.
-                 * Medical / Clinic: Calm reassuring palette, practitioner credentials, specialized treatments, patient intake / appointment scheduling.
-            5. CONTENT HIERARCHY & REALISTIC COPY:
-               - Specific, authentic copy based strictly on the business.
-               - If facts (address, phone, hours, prices) are not provided, specify clearly marked bracketed placeholders: [124 Mercer Street, Soho], [(212) 555-0198], [Tuesday–Sunday: 11:30 AM – 10:00 PM], [Pricing upon consultation].
-            6. TYPOGRAPHY SYSTEM:
-               - Select maximum 2 Google Font families tailored to the business (e.g., Playfair Display + Plus Jakarta Sans, DM Serif Display + DM Sans, Cormorant Garamond + Inter, Syne + Plus Jakarta Sans, Cinzel + Lato, Fraunces + Outfit, Space Grotesk + Inter, Lora + Work Sans).
-               - Define explicit roles: Display Header, H1-H3, Body Copy, Small Uppercase Eyebrow tracking (+0.08em).
-            7. COLOR SYSTEM:
-               - Specify 8 semantic hex tokens: --color-primary, --color-secondary, --color-accent, --color-bg, --color-surface, --color-text, --color-text-muted, --color-border.
-               - Avoid defaulting to purple/blue/neon gradients. Use organic, contextual palettes (charcoals, warm creams, terracottas, sage, navy, espresso, bronze, slate).
-               - If dark theme is requested: sophisticated dark surfaces (#121417, #18181b, #0f1117), controlled contrast, subtle borders (rgba(255,255,255,0.08)), restrained accents. NO glowing effects.
-            8. SPACING & RHYTHM SYSTEM:
-               - Generous whitespace: 80-120px desktop section padding, 48-64px mobile section padding. Fluid component gap scale (8px, 16px, 24px, 32px, 48px).
-            9. IMAGE DIRECTION:
-               - Concrete subject matter, aspect ratios (16:9, 4:5, 1:1), and curated Unsplash query themes.
-            10. NAVIGATION & MOBILE DRAWER:
-                - Desktop header with brand mark, anchor links, and distinct CTA button.
-                - Accessible mobile drawer with toggle button and close action.
-            11. CONVERSION GOALS & CORE INTERACTION:
-                - Primary conversion flow (booking, reservation, consultation request, inquiry) with realistic interaction pattern.
-
-            Output this as a comprehensive, structured architectural blueprint ready for frontend implementation.
+            Output this as a comprehensive architectural blueprint ready for frontend implementation.
         """.trimIndent()
 
         private val GENERATE_CODE_INSTRUCTION = """
@@ -102,190 +88,274 @@ class WebsiteGenerator(private val geminiService: GeminiService) {
             - NO excessive animations, glowing borders, or random geometric confetti.
             - NO emojis as icons. Use clean SVG icons or semantic typography.
             - NO generic SaaS dashboard aesthetics unless the user explicitly requested a SaaS tool.
-            - Do not add visual effects simply because they are technically possible. Every visual element must have a purpose.
-
-            BUSINESS-SPECIFIC DESIGN PATTERNS:
-            - BARBER / SALON / GROOMING:
-              * Hero: Asymmetrical layout or high-impact photographic header with left-aligned editorial typography and clear booking CTA.
-              * Services & Pricing: Clean tabular layout or dot-leader price list with service descriptions and duration (NOT 3 cards).
-              * Barber/Team: Stylist portraits with specialties and years of craft.
-              * Atmosphere / Gallery: Grid of curated shop interior and grooming photos.
-              * Location & Hours: Clear operational hours table, address, and mobile-friendly booking modal or form.
-            - RESTAURANT / BISTRO / DINING:
-              * Hero: Strong food & atmosphere imagery, restaurant identity, immediate reservation CTA.
-              * Culinary Story: Editorial split layout about culinary philosophy and locally sourced ingredients.
-              * Menu: Categorized menu (Starters, Mains, Desserts, Cocktails) with dish names, descriptions, dietary tags (GF, V), and prices in clean typographic rows.
-              * Reservation: Dedicated reservation section or interactive modal (date, time, guests, seating).
-              * Location & Hours: Lunch/Dinner service hours, address, parking/transit note.
-            - LAW FIRM / ADVISORY / FINANCE:
-              * Tone: Conservative typography, strong information hierarchy, trust-focused layout.
-              * Practice Areas: Detailed list or interactive accordion with specific legal scopes.
-              * Attorneys: Partner profiles with bar admissions, education, and credentials.
-              * Credentials: Realistic bar affiliations or recognitions.
-              * Consultation: Confidential case evaluation form.
-              * Strictly avoid flashy gradients and excessive animation.
-            - HOTEL / RESORT / HOSPITALITY:
-              * Hero: Large immersive architectural photography with date/guest booking bar.
-              * Rooms & Suites: Detailed suite showcase with square footage, bed configuration, views, and amenities.
-              * Experiences & Amenities: Spa, dining, curated local activities.
-              * Booking Bar: Interactive dates/guests check-in bar.
-            - REAL ESTATE / ARCHITECTURE:
-              * Hero: Striking architectural photography with property highlight.
-              * Search/Filter: Interactive filter bar (Location, Type, Price, Beds).
-              * Property Listings: High-resolution listing cards with real architectural metrics (sqft, bedrooms, baths, location, price).
-              * Agent / Brokerage: Profile and direct private viewing request.
-            - CREATIVE STUDIO / PORTFOLIO:
-              * Hero: Bold editorial typography-driven lockup with concise mission statement.
-              * Selected Work: Asymmetrical case study showcases with full-width or offset project imagery.
-              * Capabilities / Services: Typographic index with detailed deliverables.
-              * Client List & Inquiry: Clean tabular client list and project inquiry form.
 
             TECHNICAL DELIVERABLE REQUIREMENTS:
-
             1. HTML REQUIREMENTS:
-               - Return valid, semantic HTML5 in the "html" field.
-               - In <head>, you MUST include:
-                 * <meta charset="UTF-8">
-                 * <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                 * <link rel="preconnect" href="https://fonts.googleapis.com">
-                 * <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-                 * Real Google Fonts stylesheet <link> for the selected 1-2 font families.
-                 * <link rel="stylesheet" href="styles.css">
-               - Semantic landmarks: <header>, <nav>, <main>, <section>, <article>, <aside>, <footer>, <figure>, <time>.
+               - Valid, semantic HTML5 in the "html" field.
+               - In <head>: meta charset, viewport, Google Fonts <link>, and <link rel="stylesheet" href="styles.css">.
+               - Semantic landmarks: <header>, <nav>, <main>, <section>, <article>, <aside>, <footer>.
                - Mobile navigation toggle button with aria-label="Toggle navigation menu" and aria-expanded="false".
                - Accessible mobile navigation drawer with navigation links and close button.
                - Accessible forms with explicit <label> elements for every input, select, or textarea.
                - Include <script src="script.js"></script> before </body>.
 
             2. CSS REQUIREMENTS:
-               - Return clean, modern, responsive CSS in the "css" field.
+               - Clean, modern, responsive CSS in the "css" field.
                - Define CSS custom properties in :root:
                  --color-primary, --color-secondary, --color-accent, --color-bg, --color-surface, --color-text, --color-text-muted, --color-border.
                  --font-display, --font-body.
-               - If dark theme is requested, use sophisticated dark surfaces (#121417, #18181b, #0f1117), crisp readable text (#f4f4f5), subtle borders (1px solid rgba(255,255,255,0.08)), and restrained accents. NO neon glows or purple/blue gradients.
-               - Responsive grid and flexbox layouts with varied rhythm (asymmetrical splits, editorial lists, full-width photo breaks, tabular rows).
-               - Generous, intentional whitespace: 80-120px desktop section padding, 48-64px mobile section padding. Max container width: 1200px centered.
-               - Fluid typography using clamp() or clean responsive breakpoints.
-               - Subtle, purposeful interactions: clear hover states, button feedback, focus-visible outlines.
-               - Images: aspect-ratio, object-fit: cover, subtle border or frame.
-               - Respect prefers-reduced-motion:
-                 @media (prefers-reduced-motion: reduce) {
-                   *, *::before, *::after {
-                     animation-duration: 0.01ms !important;
-                     animation-iteration-count: 1 !important;
-                     transition-duration: 0.01ms !important;
-                     scroll-behavior: auto !important;
-                   }
-                 }
-               - Deliberate mobile responsiveness:
-                 * Responsive hamburger menu and drawer styles.
-                 * Touch targets >= 44px x 44px.
-                 * Clean overflow handling for tables and lists.
+                 --space-xs, --space-sm, --space-md, --space-lg, --space-xl.
+                 --radius-sm, --radius-md, --radius-lg.
+                 --button-padding, --button-radius.
+               - Respect prefers-reduced-motion media query.
+               - Fluid typography and responsive grid/flexbox.
 
             3. JAVASCRIPT REQUIREMENTS:
-               - Return clean, modular vanilla JavaScript in the "js" field.
-               - Mobile navigation toggle:
-                 * Opens/closes mobile menu drawer.
-                 * Updates aria-expanded attribute on hamburger button.
-                 * Closes menu when clicking links or backdrop.
-               - Interactive components:
-                 * If booking/reservation/inquiry modal exists: open button, close button, backdrop click dismissal, Escape key listener.
-                 * If tabs or accordions exist: clean tab switching and aria-selected / hidden state management.
-               - Form handling:
-                 * Event listener on forms to prevent default page reload, validate inputs, and display a polite, styled success/confirmation notice.
-               - Smooth anchor scrolling.
-               - Zero runtime errors, zero external JS library dependencies.
+               - Vanilla JS in "js" field.
+               - Mobile navigation toggle with aria-expanded and drawer open/close.
+               - Accessible modals/accordions and form submit handling without full page reload.
+               - Zero external library dependencies.
+        """.trimIndent()
 
-            4. REALISTIC CONTENT & PLACEHOLDERS:
-               - Generate realistic, concise content appropriate for the business.
-               - Never invent factual claims (awards, years of experience, customer numbers, reviews, prices, addresses) unless provided.
-               - Use clearly marked bracketed placeholders: [124 Mercer Street, Soho, NY], [(212) 555-0198], [Tuesday – Sunday: 11:30 AM – 10:00 PM], [Price upon consultation].
+        private val SECTION_SYNTHESIS_INSTRUCTION = """
+            You are a Senior Frontend Engineer creating a single targeted component for an existing website.
+            Generate ONLY the HTML and CSS required for the requested section.
+            Do NOT generate <html>, <head>, or <body> tags.
+            Ensure the section:
+            1. Conforms strictly to the provided Design Tokens and Component Blueprint.
+            2. Contains realistic, domain-specific content (no fake reviews or stats).
+            3. Uses semantic tags and responsive styling with CSS variables.
+        """.trimIndent()
 
-            5. IMAGERY:
-               - Use high-quality, topic-relevant Unsplash images with proper dimensions and aspect ratios:
-                 e.g., https://images.unsplash.com/photo-[id]?auto=format&fit=crop&w=1200&q=80 or curated Unsplash photography IDs matching the industry (barber, culinary, architecture, law, hotel).
-               - Every <img> must have a descriptive, meaningful alt attribute.
-
-            DESIGN REVIEW BEFORE OUTPUT:
-            Before returning generated code, internally evaluate the design:
-            - Does this look like a professional agency-built website?
-            - Does the design fit the specific business?
-            - Is the typography intentional?
-            - Is the spacing consistent?
-            - Are there unnecessary cards?
-            - Are there unnecessary gradients?
-            - Are there unnecessary animations?
-            - Does it look like a generic AI template?
-            - Does every section have a purpose?
-            - Would a real business owner be comfortable publishing this?
-            If the answer to the AI-template question is yes, redesign it before returning the code.
+        private val COMPONENT_EDIT_INSTRUCTION = """
+            You are a Senior Frontend Engineer modifying a specific component on an existing website.
+            Modify only the provided component HTML and relevant CSS to satisfy the user's instruction.
+            Preserve all existing design tokens, typography, and color variables.
+            Do NOT regenerate unrelated sections.
         """.trimIndent()
 
         private val MODIFY_CODE_INSTRUCTION = """
             You are a Senior Principal Frontend Engineer and UI/UX Designer modifying an existing client website.
-            Apply the user's requested changes while strictly adhering to the highest professional design standards.
+            Apply the user's requested changes while strictly adhering to professional design standards.
 
             CORE MANDATES:
             - Preserve and enhance the existing design system (typography, color variables, spacing scale, brand voice).
-            - NEVER introduce generic AI tropes: no purple/blue gradients, no floating gradient blobs, no glowing borders, no cards for every piece of information, no repeated 3-column card grids.
-            - Ensure all new markup is semantic HTML5, accessible (labels, aria attributes, alt text), and responsive.
-            - Ensure all new CSS uses existing CSS custom properties and respects prefers-reduced-motion.
-            - Ensure all new JavaScript is clean vanilla JS, handles user interactions gracefully, and throws no errors.
-            - If adding content, write realistic, business-specific copy or use bracketed placeholders [Like This] for missing facts.
-            - Output the COMPLETE modified HTML, CSS, and JS. Do not truncate or omit any section.
+            - NEVER introduce generic AI tropes: no purple/blue gradients, no floating gradient blobs, no glowing borders, no cards for every piece of information.
+            - Ensure all markup is semantic HTML5, accessible (labels, aria attributes, alt text), and responsive.
+            - Ensure all CSS uses existing CSS custom properties and respects prefers-reduced-motion.
+            - Output the COMPLETE modified HTML, CSS, and JS. Do not truncate.
         """.trimIndent()
     }
-    
+
+    /**
+     * Generates a compact, structured Design Architecture Specification.
+     * Stored in the project and reused throughout the session so Gemini never has to rediscover the visual identity.
+     */
+    suspend fun generateDesignSpecification(prompt: String): DesignSpecification {
+        val schema = buildJsonObject {
+            put("type", "OBJECT")
+            putJsonObject("properties") {
+                putJsonObject("industry") { put("type", "STRING") }
+                putJsonObject("targetAudience") { put("type", "STRING") }
+                putJsonObject("brandPersonality") { put("type", "STRING") }
+                putJsonObject("visualDirection") { put("type", "STRING") }
+                putJsonObject("primaryColor") { put("type", "STRING") }
+                putJsonObject("accentColor") { put("type", "STRING") }
+                putJsonObject("bgColor") { put("type", "STRING") }
+                putJsonObject("surfaceColor") { put("type", "STRING") }
+                putJsonObject("textColor") { put("type", "STRING") }
+                putJsonObject("displayFont") { put("type", "STRING") }
+                putJsonObject("bodyFont") { put("type", "STRING") }
+                putJsonObject("googleFontsUrl") { put("type", "STRING") }
+                putJsonObject("heroComposition") { put("type", "STRING") }
+                putJsonObject("sectionOrder") {
+                    put("type", "ARRAY")
+                    putJsonObject("items") { put("type", "STRING") }
+                }
+                putJsonObject("componentSelection") {
+                    put("type", "ARRAY")
+                    putJsonObject("items") { put("type", "STRING") }
+                }
+            }
+            putJsonArray("required") {
+                add(JsonPrimitive("industry"))
+                add(JsonPrimitive("brandPersonality"))
+                add(JsonPrimitive("primaryColor"))
+                add(JsonPrimitive("accentColor"))
+                add(JsonPrimitive("displayFont"))
+                add(JsonPrimitive("bodyFont"))
+            }
+        }
+
+        return try {
+            val raw = geminiService.generateStructuredContent(
+                prompt = "Create a structured design architecture specification for this website request:\n$prompt\n\n${ComponentBlueprints.getBlueprintGuide()}",
+                systemInstruction = DESIGN_SPEC_INSTRUCTION,
+                schema = schema,
+                taskType = GenerationTaskType.WEBSITE_ARCHITECTURE
+            )
+            parseDesignSpecification(raw, prompt)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to generate structured design spec: ${e.message}. Using high-craft default spec.")
+            deriveDefaultSpecification(prompt)
+        }
+    }
+
+    private fun parseDesignSpecification(rawJson: String, prompt: String): DesignSpecification {
+        return try {
+            val clean = cleanJsonString(rawJson)
+            val json = Json.parseToJsonElement(clean).jsonObject
+            val industry = json["industry"]?.jsonPrimitive?.content ?: "Bespoke Services"
+            val brandPersonality = json["brandPersonality"]?.jsonPrimitive?.content ?: "Artisanal, High-Craft, Contemporary"
+            val visualDirection = json["visualDirection"]?.jsonPrimitive?.content ?: "Editorial asymmetric layout with rich typography"
+            val primary = json["primaryColor"]?.jsonPrimitive?.content ?: "#1e293b"
+            val accent = json["accentColor"]?.jsonPrimitive?.content ?: "#c25e3d"
+            val bg = json["bgColor"]?.jsonPrimitive?.content ?: "#fdfcfb"
+            val surface = json["surfaceColor"]?.jsonPrimitive?.content ?: "#ffffff"
+            val text = json["textColor"]?.jsonPrimitive?.content ?: "#0f172a"
+            val displayFont = json["displayFont"]?.jsonPrimitive?.content ?: "Playfair Display"
+            val bodyFont = json["bodyFont"]?.jsonPrimitive?.content ?: "Plus Jakarta Sans"
+            val fontsUrl = json["googleFontsUrl"]?.jsonPrimitive?.content
+                ?: "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap"
+            val heroComp = json["heroComposition"]?.jsonPrimitive?.content ?: "Editorial asymmetric header"
+
+            val sections = try {
+                json["sectionOrder"]?.let { element ->
+                    kotlinx.serialization.json.Json.decodeFromJsonElement(
+                        kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.serializer<String>()),
+                        element
+                    )
+                } ?: listOf("Hero", "Services", "Story", "Gallery", "Booking", "Footer")
+            } catch (_: Exception) {
+                listOf("Hero", "Services", "Story", "Gallery", "Booking", "Footer")
+            }
+
+            val components = try {
+                json["componentSelection"]?.let { element ->
+                    kotlinx.serialization.json.Json.decodeFromJsonElement(
+                        kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.serializer<String>()),
+                        element
+                    )
+                } ?: listOf("EditorialHero", "ServiceList", "SplitContent", "ImageGallery", "BookingSection", "Footer")
+            } catch (_: Exception) {
+                listOf("EditorialHero", "ServiceList", "SplitContent", "ImageGallery", "BookingSection", "Footer")
+            }
+
+            DesignSpecification(
+                industry = industry,
+                brandPersonality = brandPersonality,
+                visualDirection = visualDirection,
+                colorSystem = ColorTokens(
+                    primary = primary,
+                    secondary = "#475569",
+                    accent = accent,
+                    bg = bg,
+                    surface = surface,
+                    text = text,
+                    textMuted = "#64748b",
+                    border = "#e2e8f0"
+                ),
+                typographySystem = TypographyTokens(
+                    displayFont = displayFont,
+                    bodyFont = bodyFont,
+                    googleFontsUrl = fontsUrl
+                ),
+                heroComposition = heroComp,
+                sectionOrder = sections,
+                componentSelection = components
+            )
+        } catch (e: Exception) {
+            deriveDefaultSpecification(prompt)
+        }
+    }
+
+    private fun deriveDefaultSpecification(prompt: String): DesignSpecification {
+        val lower = prompt.lowercase()
+        return when {
+            lower.contains("barber") || lower.contains("salon") -> DesignSpecification(
+                industry = "Grooming & Salon",
+                brandPersonality = "Heritage, High-Craft, Artisanal",
+                visualDirection = "Rich charcoal and warm amber palette with sharp editorial typography",
+                colorSystem = ColorTokens(
+                    primary = "#18181b",
+                    secondary = "#3f3f46",
+                    accent = "#d97706",
+                    bg = "#0f1013",
+                    surface = "#181a20",
+                    text = "#f4f4f5",
+                    textMuted = "#a1a1aa",
+                    border = "rgba(255, 255, 255, 0.08)"
+                ),
+                typographySystem = TypographyTokens("Fraunces", "Plus Jakarta Sans"),
+                componentSelection = listOf("EditorialHero", "ServiceList", "TeamSection", "ImageGallery", "BookingSection", "Footer")
+            )
+            lower.contains("restaurant") || lower.contains("bistro") || lower.contains("cafe") -> DesignSpecification(
+                industry = "Dining & Culinary",
+                brandPersonality = "Warm, Intimate, Artisanal",
+                visualDirection = "Warm linen surfaces with terracotta accents and generous whitespace",
+                colorSystem = ColorTokens(
+                    primary = "#292524",
+                    secondary = "#57534e",
+                    accent = "#c25e3d",
+                    bg = "#faf8f5",
+                    surface = "#ffffff",
+                    text = "#1c1917",
+                    textMuted = "#78716c",
+                    border = "#e7e5e4"
+                ),
+                typographySystem = TypographyTokens("Playfair Display", "Plus Jakarta Sans"),
+                componentSelection = listOf("LuxuryHero", "SplitContent", "ServiceList", "BookingSection", "ContactSection", "Footer")
+            )
+            else -> DesignSpecification()
+        }
+    }
+
     suspend fun enhancePrompt(originalPrompt: String): String {
         val schema = buildJsonObject {
             put("type", "OBJECT")
             putJsonObject("properties") {
                 putJsonObject("enhancedPrompt") {
                     put("type", "STRING")
-                    put("description", "A highly detailed website specification based on the user's intent. Must include business type, target audience, brand personality, bespoke layout patterns, content hierarchy, typography system, color system, spacing, image direction, navigation, and conversion goals.")
+                    put("description", "A highly detailed website specification based on the user's intent.")
                 }
             }
             putJsonArray("required") {
                 add(JsonPrimitive("enhancedPrompt"))
             }
         }
-        
-        val jsonString = geminiService.generateStructuredContent(originalPrompt, ENHANCE_PROMPT_INSTRUCTION, schema)
-        
-        try {
+
+        return try {
+            val jsonString = geminiService.generateStructuredContent(
+                prompt = originalPrompt,
+                systemInstruction = ENHANCE_PROMPT_INSTRUCTION,
+                schema = schema,
+                taskType = GenerationTaskType.WEBSITE_ARCHITECTURE
+            )
             val clean = cleanJsonString(jsonString)
             val json = Json.parseToJsonElement(clean).jsonObject
             val enhanced = json["enhancedPrompt"]?.jsonPrimitive?.content
-            if (!enhanced.isNullOrBlank()) {
-                return enhanced
-            }
+            if (!enhanced.isNullOrBlank()) enhanced else originalPrompt
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to parse enhancedPrompt JSON: ${e.message}. Attempting fallback.")
+            Log.w(TAG, "Failed to parse enhancedPrompt JSON: ${e.message}. Using original prompt.")
+            originalPrompt
         }
-
-        // If the model returned plain text directly instead of a JSON object
-        if (jsonString.isNotBlank() && !jsonString.trim().startsWith("{")) {
-            return jsonString.trim()
-        }
-        
-        return originalPrompt
     }
-    
-    suspend fun generateCode(enhancedPrompt: String): GeneratedCode {
+
+    suspend fun generateCode(enhancedPrompt: String, designSpec: DesignSpecification? = null): GeneratedCode {
         val schema = buildJsonObject {
             put("type", "OBJECT")
             putJsonObject("properties") {
                 putJsonObject("html") {
                     put("type", "STRING")
-                    put("description", "The complete, semantic HTML5 code. Must include Google Fonts link in <head>, semantic landmark tags, and reference styles.css and script.js.")
+                    put("description", "The complete, semantic HTML5 code.")
                 }
                 putJsonObject("css") {
                     put("type", "STRING")
-                    put("description", "The complete, professional CSS code. Must define CSS variables in :root, fluid typography, responsive grid/flexbox, and respect prefers-reduced-motion.")
+                    put("description", "The complete, professional CSS code with :root tokens.")
                 }
                 putJsonObject("js") {
                     put("type", "STRING")
-                    put("description", "The complete, functional vanilla JavaScript code handling mobile navigation toggle, modal/accordion interactions, and accessible form handling.")
+                    put("description", "The complete vanilla JavaScript code.")
                 }
             }
             putJsonArray("required") {
@@ -294,9 +364,40 @@ class WebsiteGenerator(private val geminiService: GeminiService) {
                 add(JsonPrimitive("js"))
             }
         }
-        
-        val rawResponse = geminiService.generateStructuredContent(enhancedPrompt, GENERATE_CODE_INSTRUCTION, schema)
-        return parseGeneratedCode(rawResponse)
+
+        val promptPayload = if (designSpec != null) {
+            """
+                $enhancedPrompt
+
+                ${designSpec.toCompactSummary()}
+
+                MANDATORY CSS ROOT TOKENS TO USE:
+                ${designSpec.toCssRootBlock()}
+
+                SELECTED COMPONENTS TO IMPLEMENT IN ORDER:
+                ${designSpec.componentSelection.joinToString(" -> ")}
+            """.trimIndent()
+        } else {
+            enhancedPrompt
+        }
+
+        val rawResponse = geminiService.generateStructuredContent(
+            prompt = promptPayload,
+            systemInstruction = GENERATE_CODE_INSTRUCTION,
+            schema = schema,
+            taskType = GenerationTaskType.FULL_GENERATION
+        )
+
+        val rawCode = parseGeneratedCode(rawResponse)
+
+        // Perform lightweight quality audit and targeted sanitation (Point 8)
+        val qualityReport = QualityAuditor.auditAndSanitize(rawCode.html, rawCode.css)
+        return GeneratedCode(
+            html = qualityReport.sanitizedHtml,
+            css = qualityReport.sanitizedCss,
+            js = rawCode.js,
+            changeDescription = "Generated website based on professional design specification."
+        )
     }
 
     private fun parseGeneratedCode(rawResponse: String): GeneratedCode {
@@ -306,15 +407,15 @@ class WebsiteGenerator(private val geminiService: GeminiService) {
             val html = json["html"]?.jsonPrimitive?.content
             val css = json["css"]?.jsonPrimitive?.content ?: ""
             val js = json["js"]?.jsonPrimitive?.content ?: ""
-            
+
             if (!html.isNullOrBlank()) {
                 return GeneratedCode(html, css, js)
             }
         } catch (e: Exception) {
-            Log.w(TAG, "JSON parse failed for generated code: ${e.message}. Attempting regex markdown extraction.")
+            Log.w(TAG, "JSON parse failed for generated code: ${e.message}. Attempting regex fallback.")
         }
 
-        // Fallback: Check if response contains markdown code blocks
+        // Regex markdown extraction fallback
         val htmlMatch = Regex("```(?:html)?\\s*([\\s\\S]*?)```", RegexOption.IGNORE_CASE).find(rawResponse)?.groupValues?.get(1)?.trim()
         val cssMatch = Regex("```css\\s*([\\s\\S]*?)```", RegexOption.IGNORE_CASE).find(rawResponse)?.groupValues?.get(1)?.trim()
         val jsMatch = Regex("```(?:javascript|js)\\s*([\\s\\S]*?)```", RegexOption.IGNORE_CASE).find(rawResponse)?.groupValues?.get(1)?.trim()
@@ -323,75 +424,111 @@ class WebsiteGenerator(private val geminiService: GeminiService) {
             return GeneratedCode(htmlMatch, cssMatch ?: "", jsMatch ?: "")
         }
 
-        // Fallback: If raw response is HTML markup itself
         if (rawResponse.contains("<html", ignoreCase = true) || rawResponse.contains("<!DOCTYPE", ignoreCase = true)) {
             return GeneratedCode(rawResponse, "", "")
         }
 
-        // Fallback: Graceful error landing card inside WebView
         val fallbackHtml = """
             <!DOCTYPE html>
             <html lang="en">
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Preview</title>
+                <title>Website</title>
                 <link rel="stylesheet" href="styles.css">
             </head>
             <body>
-                <div class="error-container">
-                    <h2>Website Content Received</h2>
-                    <p>The layout could not be automatically formatted into distinct files. You can view or regenerate using the editor prompt below.</p>
-                </div>
+                <main class="container">
+                    <h1>Website Preview</h1>
+                    <p>Your website structure has been updated.</p>
+                </main>
                 <script src="script.js"></script>
             </body>
             </html>
         """.trimIndent()
 
-        val fallbackCss = """
-            body {
-                margin: 0;
-                padding: 2rem;
-                background-color: #0d1117;
-                color: #c9d1d9;
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                min-height: 80vh;
-            }
-            .error-container {
-                max-width: 500px;
-                padding: 2rem;
-                background: #161b22;
-                border: 1px solid #30363d;
-                border-radius: 8px;
-                text-align: center;
-            }
-            h2 { color: #f0f6fc; margin-top: 0; }
-            p { color: #8b949e; line-height: 1.5; }
-        """.trimIndent()
-
-        return GeneratedCode(fallbackHtml, fallbackCss, "")
+        return GeneratedCode(fallbackHtml, "body { margin: 0; padding: 2rem; font-family: sans-serif; }", "")
     }
-    
-    suspend fun modifyCode(instruction: String, currentHtml: String, currentCss: String, currentJs: String): GeneratedCode {
+
+    /**
+     * Smart targeted modification engine:
+     * - Classifies task before calling Gemini.
+     * - Trivial color/font/spacing token edits execute locally in CSS with 0 API tokens.
+     * - New section requests synthesize only that specific component and inject it cleanly.
+     * - Component edits isolate that specific component snippet without re-sending the whole page.
+     * - Full redesigns only occur when explicitly requested.
+     */
+    suspend fun modifyCode(
+        instruction: String,
+        currentHtml: String,
+        currentCss: String,
+        currentJs: String,
+        designSpec: DesignSpecification? = null
+    ): GeneratedCode {
+        // 1. Task Classification
+        val classification = TaskClassifier.classify(instruction, currentCss)
+
+        when (classification) {
+            // ZERO-AI: Local deterministic token adjustment
+            is TaskClassification.LocalTokenAdjustment -> {
+                Log.i(TAG, "Executing 0-AI local token adjustment for instruction: $instruction")
+                val audited = QualityAuditor.auditAndSanitize(currentHtml, classification.updatedCss)
+                return GeneratedCode(
+                    html = audited.sanitizedHtml,
+                    css = audited.sanitizedCss,
+                    js = currentJs,
+                    changeDescription = classification.description
+                )
+            }
+
+            // TARGETED NEW SECTION: Generate ONLY the requested component
+            is TaskClassification.NewSectionRequest -> {
+                Log.i(TAG, "Executing targeted section synthesis for: ${classification.componentType}")
+                return synthesizeTargetSection(
+                    componentType = classification.componentType,
+                    instruction = instruction,
+                    currentHtml = currentHtml,
+                    currentCss = currentCss,
+                    currentJs = currentJs,
+                    designSpec = designSpec
+                )
+            }
+
+            // TARGETED COMPONENT EDIT: Send only target component snippet to fast model
+            is TaskClassification.TargetedComponentEdit -> {
+                Log.i(TAG, "Executing targeted component edit for: ${classification.componentName}")
+                val existingSection = ComponentBlueprints.findComponentInHtml(currentHtml, classification.componentName)
+                if (existingSection != null) {
+                    return editSingleComponent(
+                        componentName = classification.componentName,
+                        componentHtml = existingSection,
+                        instruction = instruction,
+                        currentHtml = currentHtml,
+                        currentCss = currentCss,
+                        currentJs = currentJs,
+                        designSpec = designSpec
+                    )
+                }
+            }
+
+            else -> {}
+        }
+
+        // Default / General AI Edit: Route to fast or efficient model based on task type
+        val taskType = when (classification) {
+            is TaskClassification.ContentRewrite -> GenerationTaskType.CONTENT_REWRITE
+            is TaskClassification.StyleAdjustment -> GenerationTaskType.STYLE_CSS_ADJUSTMENT
+            is TaskClassification.FullRedesign -> GenerationTaskType.FULL_GENERATION
+            else -> GenerationTaskType.COMPONENT_EDIT
+        }
+
         val schema = buildJsonObject {
             put("type", "OBJECT")
             putJsonObject("properties") {
-                putJsonObject("html") {
-                    put("type", "STRING")
-                }
-                putJsonObject("css") {
-                    put("type", "STRING")
-                }
-                putJsonObject("js") {
-                    put("type", "STRING")
-                }
-                putJsonObject("changeDescription") {
-                    put("type", "STRING")
-                    put("description", "A concise 1-2 sentence description of what was changed.")
-                }
+                putJsonObject("html") { put("type", "STRING") }
+                putJsonObject("css") { put("type", "STRING") }
+                putJsonObject("js") { put("type", "STRING") }
+                putJsonObject("changeDescription") { put("type", "STRING") }
             }
             putJsonArray("required") {
                 add(JsonPrimitive("html"))
@@ -400,39 +537,173 @@ class WebsiteGenerator(private val geminiService: GeminiService) {
                 add(JsonPrimitive("changeDescription"))
             }
         }
-        
+
+        val grounding = designSpec?.toCompactSummary() ?: ""
         val prompt = """
+            $grounding
+
             User Instruction: $instruction
-            
+
             CURRENT HTML:
             $currentHtml
-            
+
             CURRENT CSS:
             $currentCss
-            
+
             CURRENT JS:
             $currentJs
         """.trimIndent()
-        
-        val rawResponse = geminiService.generateStructuredContent(prompt, MODIFY_CODE_INSTRUCTION, schema)
-        
-        try {
+
+        val rawResponse = geminiService.generateStructuredContent(
+            prompt = prompt,
+            systemInstruction = MODIFY_CODE_INSTRUCTION,
+            schema = schema,
+            taskType = taskType
+        )
+
+        val parsed = try {
             val clean = cleanJsonString(rawResponse)
             val json = Json.parseToJsonElement(clean).jsonObject
             val html = json["html"]?.jsonPrimitive?.content ?: currentHtml
             val css = json["css"]?.jsonPrimitive?.content ?: currentCss
             val js = json["js"]?.jsonPrimitive?.content ?: currentJs
             val desc = json["changeDescription"]?.jsonPrimitive?.content ?: "Changes applied successfully."
-            return GeneratedCode(html, css, js, desc)
+            GeneratedCode(html, css, js, desc)
         } catch (e: Exception) {
             Log.w(TAG, "Failed to parse modifyCode response JSON: ${e.message}")
-            val parsed = parseGeneratedCode(rawResponse)
-            return GeneratedCode(
-                html = if (parsed.html.isNotBlank()) parsed.html else currentHtml,
-                css = if (parsed.css.isNotBlank()) parsed.css else currentCss,
-                js = if (parsed.js.isNotBlank()) parsed.js else currentJs,
+            val fallback = parseGeneratedCode(rawResponse)
+            GeneratedCode(
+                html = if (fallback.html.isNotBlank()) fallback.html else currentHtml,
+                css = if (fallback.css.isNotBlank()) fallback.css else currentCss,
+                js = if (fallback.js.isNotBlank()) fallback.js else currentJs,
                 changeDescription = "Applied edits to website."
             )
+        }
+
+        val audited = QualityAuditor.auditAndSanitize(parsed.html, parsed.css)
+        return parsed.copy(html = audited.sanitizedHtml, css = audited.sanitizedCss)
+    }
+
+    private suspend fun synthesizeTargetSection(
+        componentType: String,
+        instruction: String,
+        currentHtml: String,
+        currentCss: String,
+        currentJs: String,
+        designSpec: DesignSpecification?
+    ): GeneratedCode {
+        val schema = buildJsonObject {
+            put("type", "OBJECT")
+            putJsonObject("properties") {
+                putJsonObject("sectionHtml") {
+                    put("type", "STRING")
+                    put("description", "Semantic <section data-component=\"$componentType\">...</section> markup.")
+                }
+                putJsonObject("sectionCss") {
+                    put("type", "STRING")
+                    put("description", "CSS rules specific to this section, referencing CSS custom variables.")
+                }
+                putJsonObject("changeDescription") {
+                    put("type", "STRING")
+                }
+            }
+            putJsonArray("required") {
+                add(JsonPrimitive("sectionHtml"))
+                add(JsonPrimitive("sectionCss"))
+                add(JsonPrimitive("changeDescription"))
+            }
+        }
+
+        val grounding = designSpec?.toCompactSummary() ?: ""
+        val prompt = """
+            $grounding
+
+            Synthesize a new '$componentType' section for the website.
+            User Request: $instruction
+
+            EXISTING CSS VARIABLES AVAILABLE IN :root:
+            ${designSpec?.toCssRootBlock() ?: ":root { --color-primary: #1e293b; --color-accent: #c25e3d; }"}
+        """.trimIndent()
+
+        val raw = geminiService.generateStructuredContent(
+            prompt = prompt,
+            systemInstruction = SECTION_SYNTHESIS_INSTRUCTION,
+            schema = schema,
+            taskType = GenerationTaskType.NEW_SECTION
+        )
+
+        return try {
+            val clean = cleanJsonString(raw)
+            val json = Json.parseToJsonElement(clean).jsonObject
+            val newHtml = json["sectionHtml"]?.jsonPrimitive?.content ?: ""
+            val newCss = json["sectionCss"]?.jsonPrimitive?.content ?: ""
+            val desc = json["changeDescription"]?.jsonPrimitive?.content ?: "Added $componentType section."
+
+            val mergedHtml = ComponentBlueprints.replaceOrInsertComponent(currentHtml, componentType, newHtml)
+            val mergedCss = currentCss + "\n\n/* --- $componentType --- */\n" + newCss
+
+            val audited = QualityAuditor.auditAndSanitize(mergedHtml, mergedCss)
+            GeneratedCode(audited.sanitizedHtml, audited.sanitizedCss, currentJs, desc)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed section synthesis: ${e.message}. Falling back to standard edit.", e)
+            modifyCode(instruction, currentHtml, currentCss, currentJs, designSpec)
+        }
+    }
+
+    private suspend fun editSingleComponent(
+        componentName: String,
+        componentHtml: String,
+        instruction: String,
+        currentHtml: String,
+        currentCss: String,
+        currentJs: String,
+        designSpec: DesignSpecification?
+    ): GeneratedCode {
+        val schema = buildJsonObject {
+            put("type", "OBJECT")
+            putJsonObject("properties") {
+                putJsonObject("modifiedComponentHtml") { put("type", "STRING") }
+                putJsonObject("additionalCss") { put("type", "STRING") }
+                putJsonObject("changeDescription") { put("type", "STRING") }
+            }
+            putJsonArray("required") {
+                add(JsonPrimitive("modifiedComponentHtml"))
+                add(JsonPrimitive("changeDescription"))
+            }
+        }
+
+        val grounding = designSpec?.toCompactSummary() ?: ""
+        val prompt = """
+            $grounding
+
+            Instruction: $instruction
+
+            TARGET COMPONENT ($componentName) TO MODIFY:
+            $componentHtml
+        """.trimIndent()
+
+        val raw = geminiService.generateStructuredContent(
+            prompt = prompt,
+            systemInstruction = COMPONENT_EDIT_INSTRUCTION,
+            schema = schema,
+            taskType = GenerationTaskType.COMPONENT_EDIT
+        )
+
+        return try {
+            val clean = cleanJsonString(raw)
+            val json = Json.parseToJsonElement(clean).jsonObject
+            val modHtml = json["modifiedComponentHtml"]?.jsonPrimitive?.content ?: componentHtml
+            val addCss = json["additionalCss"]?.jsonPrimitive?.content ?: ""
+            val desc = json["changeDescription"]?.jsonPrimitive?.content ?: "Updated $componentName."
+
+            val mergedHtml = ComponentBlueprints.replaceOrInsertComponent(currentHtml, componentName, modHtml)
+            val mergedCss = if (addCss.isNotBlank()) currentCss + "\n" + addCss else currentCss
+
+            val audited = QualityAuditor.auditAndSanitize(mergedHtml, mergedCss)
+            GeneratedCode(audited.sanitizedHtml, audited.sanitizedCss, currentJs, desc)
+        } catch (e: Exception) {
+            Log.e(TAG, "Single component edit failed: ${e.message}. Falling back to standard edit.", e)
+            modifyCode(instruction, currentHtml, currentCss, currentJs, designSpec)
         }
     }
 }
