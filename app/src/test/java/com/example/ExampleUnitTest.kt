@@ -6,6 +6,7 @@ import com.example.api.GeminiErrorResponse
 import com.example.api.GenerateContentRequest
 import com.example.api.GenerationConfig
 import com.example.api.Part
+import com.example.api.ResilientDns
 import com.example.api.RetrofitClient
 import com.example.api.WebsiteGenerator
 import kotlinx.serialization.json.Json
@@ -95,5 +96,16 @@ class ExampleUnitTest {
         assertTrue(cleaned.startsWith("{"))
         assertTrue(cleaned.endsWith("}"))
         assertTrue(cleaned.contains("--color-primary"))
+    }
+
+    @Test
+    fun testResilientDns_resolvesGoogleApiHost() {
+        val addresses = ResilientDns.lookup("generativelanguage.googleapis.com")
+        assertNotNull(addresses)
+        assertTrue(addresses.isNotEmpty())
+        for (addr in addresses) {
+            assertEquals("generativelanguage.googleapis.com", addr.hostName)
+            assertNotNull(addr.address)
+        }
     }
 }

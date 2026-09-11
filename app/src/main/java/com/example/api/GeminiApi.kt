@@ -4,6 +4,7 @@ import android.util.Log
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.Json
+import okhttp3.Dns
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -14,6 +15,8 @@ import retrofit2.http.Body
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
+import java.net.InetAddress
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 
 @Serializable
@@ -92,6 +95,63 @@ interface GeminiApiService {
     ): GenerateContentResponse
 }
 
+object ResilientDns : Dns {
+    private const val TAG = "ResilientDns"
+
+    // Known Google Anycast IP addresses for Google APIs (generativelanguage.googleapis.com)
+    private val GOOGLE_API_FALLBACK_IPS = listOf(
+        "172.217.115.4",
+        "172.217.116.4",
+        "172.217.112.4",
+        "172.217.113.4",
+        "172.217.114.4",
+        "172.217.117.4",
+        "172.217.118.4",
+        "172.217.119.4",
+        "142.250.180.10",
+        "142.250.187.202"
+    )
+
+    override fun lookup(hostname: String): List<InetAddress> {
+        // 1. Try standard system DNS with brief retries for transient DNS/network delays in emulator
+        for (attempt in 1..2) {
+            try {
+                val addresses = Dns.SYSTEM.lookup(hostname)
+                if (addresses.isNotEmpty()) {
+                    return addresses
+                }
+            } catch (e: UnknownHostException) {
+                if (attempt < 2) {
+                    try {
+                        Thread.sleep(300L)
+                    } catch (_: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                    }
+                }
+            }
+        }
+
+        // 2. Fallback for Google API endpoints when system DNS fails to resolve
+        if (hostname.endsWith("googleapis.com") || hostname.endsWith("google.com")) {
+            Log.w(TAG, "System DNS failed for $hostname. Falling back to Google API Anycast addresses.")
+            val fallbackAddresses = GOOGLE_API_FALLBACK_IPS.mapNotNull { ip ->
+                try {
+                    // InetAddress.getByName(ipString) with IP literal parses bytes without network DNS lookup
+                    val ipBytes = InetAddress.getByName(ip).address
+                    InetAddress.getByAddress(hostname, ipBytes)
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            if (fallbackAddresses.isNotEmpty()) {
+                return fallbackAddresses
+            }
+        }
+
+        throw UnknownHostException("Unable to resolve host \"$hostname\": No address associated with hostname")
+    }
+}
+
 object RetrofitClient {
     private const val TAG = "GeminiApi"
     private const val BASE_URL = "https://generativelanguage.googleapis.com/"
@@ -133,6 +193,8 @@ object RetrofitClient {
     }
 
     private val okHttpClient = OkHttpClient.Builder()
+        .dns(ResilientDns)
+        .retryOnConnectionFailure(true)
         .addInterceptor(loggingInterceptor)
         .connectTimeout(120, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
