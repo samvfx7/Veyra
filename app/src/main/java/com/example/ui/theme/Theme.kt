@@ -5,23 +5,32 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-val Primary = Color(0xFFFFFFFF)
-val OnPrimary = Color(0xFF000000)
-val PrimaryContainer = Color(0xFF1A1A1A)
-val OnPrimaryContainer = Color(0xFFFFFFFF)
+val Primary = Color(0xFFF8FAFC)
+val OnPrimary = Color(0xFF0F172A)
+val PrimaryContainer = Color(0xFF1E2235)
+val OnPrimaryContainer = Color(0xFFE2E8F0)
 
-val Secondary = Color(0xFFA0A0A0)
-val OnSecondary = Color(0xFF000000)
+val Secondary = Color(0xFF94A3B8)
+val OnSecondary = Color(0xFF0F172A)
+val SecondaryContainer = Color(0xFF1E293B)
+val OnSecondaryContainer = Color(0xFFCBD5E1)
 
-val Background = Color(0xFF050505) 
-val OnBackground = Color(0xFFEDEDED)
+val Tertiary = Color(0xFF818CF8)
+val OnTertiary = Color(0xFF0F172A)
 
-val Surface = Color(0xFF0A0A0A) 
-val OnSurface = Color(0xFFEDEDED)
-val SurfaceVariant = Color(0xFF141414)
-val OnSurfaceVariant = Color(0xFFA0A0A0)
+val Background = Color(0xFF08090D) 
+val OnBackground = Color(0xFFF1F5F9)
 
-val Error = Color(0xFFEF4444)
+val Surface = Color(0xFF0F111A) 
+val OnSurface = Color(0xFFF1F5F9)
+val SurfaceVariant = Color(0xFF1A1D2B)
+val OnSurfaceVariant = Color(0xFF94A3B8)
+
+val Outline = Color(0xFF2E344A)
+val OutlineVariant = Color(0xFF1E2335)
+
+val Error = Color(0xFFF87171)
+val OnError = Color(0xFF450A0A)
 
 private val PremiumDarkColorScheme = darkColorScheme(
     primary = Primary,
@@ -30,13 +39,20 @@ private val PremiumDarkColorScheme = darkColorScheme(
     onPrimaryContainer = OnPrimaryContainer,
     secondary = Secondary,
     onSecondary = OnSecondary,
+    secondaryContainer = SecondaryContainer,
+    onSecondaryContainer = OnSecondaryContainer,
+    tertiary = Tertiary,
+    onTertiary = OnTertiary,
     background = Background,
     onBackground = OnBackground,
     surface = Surface,
     onSurface = OnSurface,
     surfaceVariant = SurfaceVariant,
     onSurfaceVariant = OnSurfaceVariant,
-    error = Error
+    outline = Outline,
+    outlineVariant = OutlineVariant,
+    error = Error,
+    onError = OnError
 )
 
 @Composable

@@ -88,17 +88,50 @@ class HomeViewModel(
                 }
                 
             } catch (e: Exception) {
-                generationState.value = GenerationState.Error(e.message ?: "Unknown error occurred")
+                val errorMsg = when (e) {
+                    is com.example.api.GeminiApiException -> e.message ?: "Gemini API Error (${e.httpCode})"
+                    else -> e.localizedMessage ?: e.message ?: "An unexpected error occurred during generation."
+                }
+                generationState.value = GenerationState.Error(errorMsg)
             }
         }
     }
     
+    fun clearPrompt() {
+        prompt.value = ""
+    }
+
+    fun dismissError() {
+        generationState.value = GenerationState.Idle
+    }
+
+    fun deleteProject(projectId: String) {
+        viewModelScope.launch {
+            repository.deleteProject(projectId)
+        }
+    }
+
     private fun determineProjectName(prompt: String): String {
-        val words = prompt.split(" ").filter { it.length > 2 }
-        return if (words.size >= 2) {
-            "${words[0]} ${words[1]}".replaceFirstChar { it.uppercase() } + " Project"
-        } else {
-            "New Website Project"
+        val cleanWords = prompt
+            .replace(Regex("[^a-zA-Z0-9\\s]"), "")
+            .split(Regex("\\s+"))
+            .filter { it.length > 1 && !listOf("a", "an", "the", "for", "with", "and", "in", "of").contains(it.lowercase()) }
+        
+        return when {
+            cleanWords.size >= 3 -> {
+                "${cleanWords[0]} ${cleanWords[1]} ${cleanWords[2]}"
+                    .split(" ")
+                    .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+            }
+            cleanWords.size == 2 -> {
+                "${cleanWords[0]} ${cleanWords[1]}"
+                    .split(" ")
+                    .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+            }
+            cleanWords.size == 1 -> {
+                cleanWords[0].replaceFirstChar { it.uppercase() } + " Website"
+            }
+            else -> "Modern Web Project"
         }
     }
     

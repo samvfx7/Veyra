@@ -14,6 +14,9 @@ data class Project(
     val htmlContent: String = "",
     val cssContent: String = "",
     val jsContent: String = "",
+    val previousHtml: String? = null,
+    val previousCss: String? = null,
+    val previousJs: String? = null,
     val creationDate: Long = System.currentTimeMillis(),
     val lastModifiedDate: Long = System.currentTimeMillis()
 )

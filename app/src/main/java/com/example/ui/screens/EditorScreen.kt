@@ -1,33 +1,45 @@
 package com.example.ui.screens
 
+import android.content.Context
+import android.content.Intent
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
+import android.widget.Toast
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.Computer
-import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.Project
@@ -47,69 +59,220 @@ fun EditorScreen(
     var viewMode by remember { mutableStateOf(ViewMode.PREVIEW) }
     var selectedTab by remember { mutableStateOf(CodeTab.HTML) }
     var viewportMode by remember { mutableStateOf(ViewportMode.DESKTOP) }
+    var reloadKey by remember { mutableIntStateOf(0) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
 
     if (project == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
+            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
         }
         return
     }
 
-    Scaffold { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize()) {
+    val currentProject = project!!
+
+    if (showRenameDialog) {
+        RenameProjectDialog(
+            currentName = currentProject.name,
+            onDismiss = { showRenameDialog = false },
+            onConfirm = { newName ->
+                viewModel.renameProject(newName)
+                showRenameDialog = false
+            }
+        )
+    }
+
+    Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .background(MaterialTheme.colorScheme.background)
+        ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
-                    .background(MaterialTheme.colorScheme.background)
+                    .statusBarsPadding()
             ) {
-                Spacer(modifier = Modifier.height(100.dp)) // Space for floating nav bar
+                // Top Action & Navigation Bar
+                EditorTopBar(
+                    project = currentProject,
+                    viewMode = viewMode,
+                    viewportMode = viewportMode,
+                    canUndo = currentProject.previousHtml != null,
+                    onNavigateBack = onNavigateBack,
+                    onRenameClick = { showRenameDialog = true },
+                    onUndoClick = { viewModel.undoEdit() },
+                    onRefreshClick = { reloadKey++ },
+                    onShareClick = { shareProject(context, currentProject) },
+                    onCopyCodeClick = {
+                        val fullHtml = buildSelfContainedHtml(currentProject)
+                        clipboardManager.setText(AnnotatedString(fullHtml))
+                        Toast.makeText(context, "Full website bundle copied to clipboard!", Toast.LENGTH_SHORT).show()
+                    },
+                    onViewportModeChange = { viewportMode = it },
+                    onViewModeChange = { viewMode = it }
+                )
 
-                // Main Content Area (Preview or Code)
+                // Main Content Workspace (Preview vs Code)
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(MaterialTheme.colorScheme.surface),
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     if (viewMode == ViewMode.PREVIEW) {
-                        WebsitePreview(project!!, viewportMode)
+                        WebsitePreview(
+                            project = currentProject,
+                            viewportMode = viewportMode,
+                            reloadTrigger = reloadKey
+                        )
                     } else {
-                        CodeViewer(project!!, selectedTab) { selectedTab = it }
+                        CodeViewer(
+                            project = currentProject,
+                            selectedTab = selectedTab,
+                            onTabSelected = { selectedTab = it },
+                            onCopyContent = { content, title ->
+                                clipboardManager.setText(AnnotatedString(content))
+                                Toast.makeText(context, "$title copied to clipboard!", Toast.LENGTH_SHORT).show()
+                            }
+                        )
                     }
                 }
 
-                // AI Editor Panel
+                // AI Edit & Iterate Panel
                 Surface(
-                    color = MaterialTheme.colorScheme.background,
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 16.dp, bottom = 16.dp, start = 16.dp, end = 16.dp)
+                        .navigationBarsPadding()
                 ) {
                     Column(
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
                     ) {
-                        if (lastChange != null) {
-                            Text(
-                                text = "Last Edit: $lastChange",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-                        }
-                        
-                        if (editError != null) {
-                            Text(
-                                text = "Error: $editError",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
+                        // Status & Error Messages
+                        AnimatedVisibility(visible = lastChange != null && editError == null) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 10.dp)
+                                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = lastChange ?: "",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (currentProject.previousHtml != null) {
+                                    TextButton(
+                                        onClick = { viewModel.undoEdit() },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(28.dp)
+                                    ) {
+                                        Text("Undo", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                            }
                         }
 
+                        AnimatedVisibility(visible = editError != null) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 10.dp)
+                                    .background(MaterialTheme.colorScheme.error.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                                    .border(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.ErrorOutline,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = editError ?: "",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(
+                                    onClick = { viewModel.dismissError() },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Dismiss error",
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Quick Suggestion Chips
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 12.dp)
+                        ) {
+                            val suggestions = listOf(
+                                "✨ Add smooth animations",
+                                "🌙 Add dark mode toggle",
+                                "📱 Optimize mobile layout",
+                                "🎨 Modern glassmorphism style",
+                                "💬 Add contact form & CTA",
+                                "⭐ Add customer reviews section"
+                            )
+                            items(suggestions) { suggestion ->
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = MaterialTheme.colorScheme.surface,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .clickable {
+                                            viewModel.onEditInstructionChange(suggestion.substringAfter(" "))
+                                        }
+                                ) {
+                                    Text(
+                                        text = suggestion,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        // Input Bar
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
@@ -118,35 +281,44 @@ fun EditorScreen(
                                 value = editInstruction,
                                 onValueChange = { viewModel.onEditInstructionChange(it) },
                                 modifier = Modifier.weight(1f),
-                                placeholder = { Text("e.g. Make hero luxurious...") },
-                                shape = RoundedCornerShape(4.dp),
+                                placeholder = {
+                                    Text("Ask AI to modify design, add features...", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                },
+                                shape = RoundedCornerShape(12.dp),
                                 enabled = !isEditing,
+                                maxLines = 3,
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedContainerColor = MaterialTheme.colorScheme.surface,
                                     unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                                    focusedBorderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f),
-                                    unfocusedBorderColor = Color.Transparent
+                                    focusedBorderColor = MaterialTheme.colorScheme.tertiary,
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
                                 )
                             )
-                            Spacer(Modifier.width(16.dp))
-                            IconButton(
+                            Spacer(Modifier.width(10.dp))
+                            Button(
                                 onClick = { viewModel.applyEdit() },
                                 enabled = editInstruction.isNotBlank() && !isEditing,
-                                modifier = Modifier
-                                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(4.dp))
-                                    .size(56.dp)
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.size(52.dp),
+                                contentPadding = PaddingValues(0.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             ) {
                                 if (isEditing) {
                                     CircularProgressIndicator(
                                         color = MaterialTheme.colorScheme.onPrimary,
-                                        modifier = Modifier.size(24.dp),
-                                        strokeWidth = 2.dp
+                                        modifier = Modifier.size(22.dp),
+                                        strokeWidth = 2.5.dp
                                     )
                                 } else {
                                     Icon(
-                                        imageVector = Icons.Default.Send,
+                                        imageVector = Icons.AutoMirrored.Filled.Send,
                                         contentDescription = "Apply Edit",
-                                        tint = MaterialTheme.colorScheme.onPrimary
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
                             }
@@ -154,76 +326,213 @@ fun EditorScreen(
                     }
                 }
             }
+        }
+    }
+}
 
-            // Floating Pill Nav Bar
+@Composable
+fun EditorTopBar(
+    project: Project,
+    viewMode: ViewMode,
+    viewportMode: ViewportMode,
+    canUndo: Boolean,
+    onNavigateBack: () -> Unit,
+    onRenameClick: () -> Unit,
+    onUndoClick: () -> Unit,
+    onRefreshClick: () -> Unit,
+    onShareClick: () -> Unit,
+    onCopyCodeClick: () -> Unit,
+    onViewportModeChange: (ViewportMode) -> Unit,
+    onViewModeChange: (ViewMode) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .horizontalScroll(rememberScrollState()),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        // Back Button
+        IconButton(
+            onClick = onNavigateBack,
+            modifier = Modifier
+                .size(40.dp)
+                .background(MaterialTheme.colorScheme.surface, CircleShape)
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Back",
+                tint = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        // Project Name with edit trigger
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onRenameClick)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = project.name,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 140.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+            Icon(
+                Icons.Default.Edit,
+                contentDescription = "Rename project",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(14.dp)
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .width(1.dp)
+                .height(24.dp)
+                .background(MaterialTheme.colorScheme.outlineVariant)
+        )
+
+        // Undo action
+        if (canUndo) {
+            IconButton(
+                onClick = onUndoClick,
+                modifier = Modifier
+                    .size(38.dp)
+                    .background(MaterialTheme.colorScheme.surface, CircleShape)
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Undo,
+                    contentDescription = "Undo last edit",
+                    tint = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+
+        // Refresh preview action
+        IconButton(
+            onClick = onRefreshClick,
+            modifier = Modifier
+                .size(38.dp)
+                .background(MaterialTheme.colorScheme.surface, CircleShape)
+        ) {
+            Icon(
+                Icons.Default.Refresh,
+                contentDescription = "Refresh Preview",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+
+        // Share action
+        IconButton(
+            onClick = onShareClick,
+            modifier = Modifier
+                .size(38.dp)
+                .background(MaterialTheme.colorScheme.surface, CircleShape)
+        ) {
+            Icon(
+                Icons.Default.Share,
+                contentDescription = "Share Code",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+
+        // Copy bundle code action
+        IconButton(
+            onClick = onCopyCodeClick,
+            modifier = Modifier
+                .size(38.dp)
+                .background(MaterialTheme.colorScheme.surface, CircleShape)
+        ) {
+            Icon(
+                Icons.Default.ContentCopy,
+                contentDescription = "Copy Full HTML Bundle",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .width(1.dp)
+                .height(24.dp)
+                .background(MaterialTheme.colorScheme.outlineVariant)
+        )
+
+        // Viewport switcher (Desktop / Mobile) - only visible in Preview mode
+        if (viewMode == ViewMode.PREVIEW) {
             Row(
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 32.dp, start = 16.dp, end = 16.dp)
-                    .height(56.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 8.dp),
+                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(50))
+                    .padding(2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onNavigateBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onBackground)
-                }
-                
-                Spacer(modifier = Modifier.width(8.dp))
-                Box(modifier = Modifier.width(1.dp).height(24.dp).background(MaterialTheme.colorScheme.surfaceVariant))
-                Spacer(modifier = Modifier.width(8.dp))
-                
-                Text(
-                    text = project!!.name,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.widthIn(max = 120.dp).padding(horizontal = 8.dp),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                
-                Spacer(modifier = Modifier.width(8.dp))
-                Box(modifier = Modifier.width(1.dp).height(24.dp).background(MaterialTheme.colorScheme.surfaceVariant))
-                Spacer(modifier = Modifier.width(8.dp))
-                
-                if (viewMode == ViewMode.PREVIEW) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = { viewportMode = ViewportMode.DESKTOP }) {
-                            Icon(Icons.Default.Computer, contentDescription = "Desktop", tint = if (viewportMode == ViewportMode.DESKTOP) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        IconButton(onClick = { viewportMode = ViewportMode.MOBILE }) {
-                            Icon(Icons.Default.Phone, contentDescription = "Mobile", tint = if (viewportMode == ViewportMode.MOBILE) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Box(modifier = Modifier.width(1.dp).height(24.dp).background(MaterialTheme.colorScheme.surfaceVariant))
-                    Spacer(modifier = Modifier.width(8.dp))
-                }
-                
-                Row(
+                IconButton(
+                    onClick = { onViewportModeChange(ViewportMode.DESKTOP) },
                     modifier = Modifier
-                        .padding(end = 4.dp)
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(50))
-                        .padding(2.dp)
+                        .size(32.dp)
+                        .background(
+                            if (viewportMode == ViewportMode.DESKTOP) MaterialTheme.colorScheme.surface else Color.Transparent,
+                            CircleShape
+                        )
                 ) {
-                    ViewModeButton(
-                        text = "Preview",
-                        icon = Icons.Default.PlayArrow,
-                        selected = viewMode == ViewMode.PREVIEW,
-                        onClick = { viewMode = ViewMode.PREVIEW }
+                    Icon(
+                        Icons.Default.Computer,
+                        contentDescription = "Desktop view",
+                        tint = if (viewportMode == ViewportMode.DESKTOP) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
                     )
-                    ViewModeButton(
-                        text = "Code",
-                        icon = Icons.Default.Code,
-                        selected = viewMode == ViewMode.CODE,
-                        onClick = { viewMode = ViewMode.CODE }
+                }
+
+                IconButton(
+                    onClick = { onViewportModeChange(ViewportMode.MOBILE) },
+                    modifier = Modifier
+                        .size(32.dp)
+                        .background(
+                            if (viewportMode == ViewportMode.MOBILE) MaterialTheme.colorScheme.surface else Color.Transparent,
+                            CircleShape
+                        )
+                ) {
+                    Icon(
+                        Icons.Default.Phone,
+                        contentDescription = "Mobile view",
+                        tint = if (viewportMode == ViewportMode.MOBILE) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
+        }
+
+        // View Mode Switcher (Preview / Code)
+        Row(
+            modifier = Modifier
+                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(50))
+                .padding(2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ViewModeButton(
+                text = "Preview",
+                icon = Icons.Default.PlayArrow,
+                selected = viewMode == ViewMode.PREVIEW,
+                onClick = { onViewModeChange(ViewMode.PREVIEW) }
+            )
+            ViewModeButton(
+                text = "Code",
+                icon = Icons.Default.Code,
+                selected = viewMode == ViewMode.CODE,
+                onClick = { onViewModeChange(ViewMode.CODE) }
+            )
         }
     }
 }
@@ -237,58 +546,135 @@ fun ViewModeButton(
 ) {
     val bgColor = if (selected) MaterialTheme.colorScheme.surface else Color.Transparent
     val contentColor = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
-    
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .clip(RoundedCornerShape(50))
             .background(bgColor)
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
-        Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(8.dp))
-        Text(text, color = contentColor, style = MaterialTheme.typography.labelLarge)
+        Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(text, color = contentColor, style = MaterialTheme.typography.labelMedium)
     }
 }
 
 enum class ViewMode { PREVIEW, CODE }
-enum class CodeTab { HTML, CSS, JS }
+enum class CodeTab { HTML, CSS, JS, BUNDLE }
 enum class ViewportMode { DESKTOP, MOBILE }
 
 @Composable
-fun WebsitePreview(project: Project, viewportMode: ViewportMode) {
+fun WebsitePreview(
+    project: Project,
+    viewportMode: ViewportMode,
+    reloadTrigger: Int
+) {
     val htmlContent = project.htmlContent
     val cssContent = project.cssContent
     val jsContent = project.jsContent
-    
-    val modifier = if (viewportMode == ViewportMode.MOBILE) {
-        Modifier
-            .fillMaxWidth(0.9f)
-            .widthIn(max = 400.dp)
-            .fillMaxHeight()
-            .padding(vertical = 16.dp)
-            .border(1.dp, MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(16.dp))
-            .clip(RoundedCornerShape(16.dp))
-            .animateContentSize()
+
+    // Track last injected payload to avoid flickering upon external recompositions
+    var lastLoadedPayload by remember { mutableStateOf("") }
+    var lastTrigger by remember { mutableIntStateOf(-1) }
+
+    val contentPayload = "$htmlContent|$cssContent|$jsContent|$reloadTrigger"
+
+    if (viewportMode == ViewportMode.MOBILE) {
+        // High-polish smartphone frame simulation
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(vertical = 12.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                modifier = Modifier
+                    .width(360.dp)
+                    .fillMaxHeight()
+                    .shadow(16.dp, RoundedCornerShape(36.dp))
+                    .background(Color(0xFF10131A), RoundedCornerShape(36.dp))
+                    .border(2.5.dp, Color(0xFF2C3246), RoundedCornerShape(36.dp))
+                    .padding(top = 10.dp, bottom = 8.dp, start = 8.dp, end = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Top Notch / Camera Pill
+                Box(
+                    modifier = Modifier
+                        .width(90.dp)
+                        .height(14.dp)
+                        .background(Color(0xFF07080C), RoundedCornerShape(50))
+                )
+                Spacer(Modifier.height(8.dp))
+
+                // The Screen Surface
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(Color.White)
+                ) {
+                    PreviewWebView(
+                        project = project,
+                        reloadTrigger = reloadTrigger,
+                        contentPayload = contentPayload,
+                        lastLoadedPayload = lastLoadedPayload,
+                        onPayloadLoaded = { lastLoadedPayload = it }
+                    )
+                }
+
+                Spacer(Modifier.height(8.dp))
+                // Bottom Gesture Bar
+                Box(
+                    modifier = Modifier
+                        .width(110.dp)
+                        .height(4.dp)
+                        .background(Color(0xFF5A627A), RoundedCornerShape(50))
+                )
+            }
+        }
     } else {
-        Modifier
-            .fillMaxSize()
-            .animateContentSize()
+        // Desktop Full Bleed Preview
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.White)
+        ) {
+            PreviewWebView(
+                project = project,
+                reloadTrigger = reloadTrigger,
+                contentPayload = contentPayload,
+                lastLoadedPayload = lastLoadedPayload,
+                onPayloadLoaded = { lastLoadedPayload = it }
+            )
+        }
     }
-    
+}
+
+@Composable
+fun PreviewWebView(
+    project: Project,
+    reloadTrigger: Int,
+    contentPayload: String,
+    lastLoadedPayload: String,
+    onPayloadLoaded: (String) -> Unit
+) {
     AndroidView(
-        modifier = modifier,
+        modifier = Modifier.fillMaxSize(),
         factory = { context ->
             WebView(context).apply {
                 settings.javaScriptEnabled = true
-                // Secure the webview
                 settings.allowFileAccess = false
                 settings.allowContentAccess = false
                 settings.allowFileAccessFromFileURLs = false
                 settings.allowUniversalAccessFromFileURLs = false
-                settings.domStorageEnabled = false
-                
+                settings.domStorageEnabled = true
+                settings.useWideViewPort = true
+                settings.loadWithOverviewMode = true
+
                 webViewClient = object : WebViewClient() {
                     override fun shouldInterceptRequest(
                         view: WebView?,
@@ -299,14 +685,14 @@ fun WebsitePreview(project: Project, viewportMode: ViewportMode) {
                             return WebResourceResponse(
                                 "text/css",
                                 "UTF-8",
-                                cssContent.byteInputStream()
+                                project.cssContent.byteInputStream()
                             )
                         }
                         if (url.endsWith("script.js")) {
                             return WebResourceResponse(
                                 "application/javascript",
                                 "UTF-8",
-                                jsContent.byteInputStream()
+                                project.jsContent.byteInputStream()
                             )
                         }
                         return super.shouldInterceptRequest(view, request)
@@ -315,62 +701,223 @@ fun WebsitePreview(project: Project, viewportMode: ViewportMode) {
             }
         },
         update = { webView ->
-            // Injecting CSS/JS directly into head and body to be absolutely sure it applies
-            // Some generated HTML might not have `<link rel="stylesheet" href="styles.css">`
-            val injectedHtml = buildString {
-                if (htmlContent.contains("<head>")) {
-                    append(htmlContent.replace("<head>", "<head><style>$cssContent</style>"))
-                } else if (htmlContent.contains("<html>")) {
-                    append(htmlContent.replace("<html>", "<html><head><style>$cssContent</style></head>"))
-                } else {
-                    append("<html><head><style>$cssContent</style></head><body>$htmlContent")
-                }
+            // CRITICAL FIX: Only reload if the actual content or reload trigger changed!
+            // This prevents recompositions caused by typing in text inputs from reloading the WebView.
+            if (contentPayload != lastLoadedPayload) {
+                val finalHtml = buildSelfContainedHtml(project)
+                webView.loadDataWithBaseURL("https://veyra.local", finalHtml, "text/html", "UTF-8", null)
+                onPayloadLoaded(contentPayload)
             }
-            
-            val finalHtml = if (injectedHtml.contains("</body>")) {
-                injectedHtml.replace("</body>", "<script>$jsContent</script></body>")
-            } else {
-                "$injectedHtml<script>$jsContent</script></body></html>"
-            }
-            
-            webView.loadDataWithBaseURL("https://veyra.local", finalHtml, "text/html", "UTF-8", null)
         }
     )
 }
 
+fun buildSelfContainedHtml(project: Project): String {
+    val rawHtml = project.htmlContent
+    val css = project.cssContent
+    val js = project.jsContent
+
+    val viewportMeta = """<meta name="viewport" content="width=device-width, initial-scale=1.0">"""
+    val utf8Meta = """<meta charset="UTF-8">"""
+
+    val htmlWithHead = when {
+        rawHtml.contains("<head>", ignoreCase = true) -> {
+            rawHtml.replace(
+                Regex("<head>", RegexOption.IGNORE_CASE),
+                "<head>\n$utf8Meta\n$viewportMeta\n<style>\n$css\n</style>"
+            )
+        }
+        rawHtml.contains("<html>", ignoreCase = true) -> {
+            rawHtml.replace(
+                Regex("<html>", RegexOption.IGNORE_CASE),
+                "<html>\n<head>\n$utf8Meta\n$viewportMeta\n<style>\n$css\n</style>\n</head>"
+            )
+        }
+        else -> {
+            "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n$utf8Meta\n$viewportMeta\n<style>\n$css\n</style>\n</head>\n<body>\n$rawHtml"
+        }
+    }
+
+    return when {
+        htmlWithHead.contains("</body>", ignoreCase = true) -> {
+            htmlWithHead.replace(
+                Regex("</body>", RegexOption.IGNORE_CASE),
+                "<script>\n$js\n</script>\n</body>"
+            )
+        }
+        htmlWithHead.contains("</html>", ignoreCase = true) -> {
+            htmlWithHead.replace(
+                Regex("</html>", RegexOption.IGNORE_CASE),
+                "<script>\n$js\n</script>\n</body>\n</html>"
+            )
+        }
+        else -> {
+            "$htmlWithHead\n<script>\n$js\n</script>\n</body>\n</html>"
+        }
+    }
+}
+
 @Composable
-fun CodeViewer(project: Project, selectedTab: CodeTab, onTabSelected: (CodeTab) -> Unit) {
+fun CodeViewer(
+    project: Project,
+    selectedTab: CodeTab,
+    onTabSelected: (CodeTab) -> Unit,
+    onCopyContent: (String, String) -> Unit
+) {
+    val (codeText, tabTitle) = when (selectedTab) {
+        CodeTab.HTML -> Pair(project.htmlContent, "index.html")
+        CodeTab.CSS -> Pair(project.cssContent, "styles.css")
+        CodeTab.JS -> Pair(project.jsContent, "script.js")
+        CodeTab.BUNDLE -> Pair(buildSelfContainedHtml(project), "bundle.html")
+    }
+
+    val lines = remember(codeText) { codeText.lines() }
+
     Column(modifier = Modifier.fillMaxSize()) {
-        TabRow(
-            selectedTabIndex = selectedTab.ordinal,
-            containerColor = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.onSurface
+        // Tab row & Header with copy button
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Tab(selected = selectedTab == CodeTab.HTML, onClick = { onTabSelected(CodeTab.HTML) }, text = { Text("index.html") })
-            Tab(selected = selectedTab == CodeTab.CSS, onClick = { onTabSelected(CodeTab.CSS) }, text = { Text("styles.css") })
-            Tab(selected = selectedTab == CodeTab.JS, onClick = { onTabSelected(CodeTab.JS) }, text = { Text("script.js") })
+            ScrollableTabRow(
+                selectedTabIndex = selectedTab.ordinal,
+                containerColor = Color.Transparent,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                edgePadding = 4.dp,
+                divider = {}
+            ) {
+                Tab(
+                    selected = selectedTab == CodeTab.HTML,
+                    onClick = { onTabSelected(CodeTab.HTML) },
+                    text = { Text("index.html", style = MaterialTheme.typography.labelMedium) }
+                )
+                Tab(
+                    selected = selectedTab == CodeTab.CSS,
+                    onClick = { onTabSelected(CodeTab.CSS) },
+                    text = { Text("styles.css", style = MaterialTheme.typography.labelMedium) }
+                )
+                Tab(
+                    selected = selectedTab == CodeTab.JS,
+                    onClick = { onTabSelected(CodeTab.JS) },
+                    text = { Text("script.js", style = MaterialTheme.typography.labelMedium) }
+                )
+                Tab(
+                    selected = selectedTab == CodeTab.BUNDLE,
+                    onClick = { onTabSelected(CodeTab.BUNDLE) },
+                    text = { Text("Full Bundle", style = MaterialTheme.typography.labelMedium) }
+                )
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "${lines.size} lines",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.width(8.dp))
+                IconButton(
+                    onClick = { onCopyContent(codeText, tabTitle) },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        Icons.Default.ContentCopy,
+                        contentDescription = "Copy code",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
         }
-        
-        val codeText = when (selectedTab) {
-            CodeTab.HTML -> project.htmlContent
-            CodeTab.CSS -> project.cssContent
-            CodeTab.JS -> project.jsContent
-        }
-        
-        // Basic Code display
-        androidx.compose.foundation.lazy.LazyColumn(
+
+        // Code Area with line numbers gutter
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp)
+                .background(Color(0xFF090A0E))
+                .padding(12.dp)
         ) {
-            item {
-                Text(
-                    text = codeText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                )
+            items(lines.size) { index ->
+                val lineNumber = index + 1
+                val lineContent = lines[index]
+
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "$lineNumber",
+                        modifier = Modifier
+                            .width(36.dp)
+                            .padding(end = 12.dp),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            color = Color(0xFF4A5568),
+                            textAlign = TextAlign.End
+                        )
+                    )
+                    Text(
+                        text = lineContent.ifEmpty { " " },
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            color = Color(0xFFE2E8F0)
+                        )
+                    )
+                }
             }
         }
     }
+}
+
+@Composable
+fun RenameProjectDialog(
+    currentName: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var text by remember { mutableStateOf(currentName) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename Project", style = MaterialTheme.typography.titleMedium) },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                label = { Text("Project Name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = { if (text.isNotBlank()) onConfirm(text.trim()) },
+                enabled = text.isNotBlank()
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+fun shareProject(context: Context, project: Project) {
+    val fullHtml = buildSelfContainedHtml(project)
+    val sendIntent: Intent = Intent().apply {
+        action = Intent.ACTION_SEND
+        putExtra(Intent.EXTRA_TEXT, fullHtml)
+        putExtra(Intent.EXTRA_SUBJECT, "${project.name} - HTML Website")
+        type = "text/html"
+    }
+    val shareIntent = Intent.createChooser(sendIntent, "Share Website Code")
+    context.startActivity(shareIntent)
 }

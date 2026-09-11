@@ -65,6 +65,9 @@ class EditorViewModel(
                 )
                 
                 val updatedProject = currentProject.copy(
+                    previousHtml = currentProject.htmlContent,
+                    previousCss = currentProject.cssContent,
+                    previousJs = currentProject.jsContent,
                     htmlContent = newCode.html,
                     cssContent = newCode.css,
                     jsContent = newCode.js,
@@ -74,13 +77,44 @@ class EditorViewModel(
                 _lastChangeDescription.value = newCode.changeDescription
                 _editInstruction.value = ""
             } catch (e: Exception) {
-                _editError.value = e.message ?: "Failed to apply edit"
+                val errorMsg = when (e) {
+                    is com.example.api.GeminiApiException -> e.message ?: "Failed to apply edit"
+                    else -> e.localizedMessage ?: e.message ?: "Failed to apply edit"
+                }
+                _editError.value = errorMsg
             } finally {
                 _isEditing.value = false
             }
         }
     }
     
+    fun undoEdit() {
+        val currentProject = _project.value ?: return
+        if (currentProject.previousHtml == null) return
+
+        viewModelScope.launch {
+            val restoredProject = currentProject.copy(
+                htmlContent = currentProject.previousHtml,
+                cssContent = currentProject.previousCss ?: "",
+                jsContent = currentProject.previousJs ?: "",
+                previousHtml = null,
+                previousCss = null,
+                previousJs = null,
+                lastModifiedDate = System.currentTimeMillis()
+            )
+            repository.updateProject(restoredProject)
+            _lastChangeDescription.value = "Reverted to previous version"
+        }
+    }
+
+    fun renameProject(newName: String) {
+        val current = _project.value ?: return
+        if (newName.isBlank()) return
+        viewModelScope.launch {
+            repository.updateProject(current.copy(name = newName.trim()))
+        }
+    }
+
     fun dismissError() {
         _editError.value = null
     }
